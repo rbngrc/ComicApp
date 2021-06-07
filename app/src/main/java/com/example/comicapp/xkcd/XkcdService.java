@@ -9,7 +9,4 @@ public interface XkcdService {
     @GET("{num}/info.0.json")
     Call<Comic> getComic(@Path("num") int num);
 
-//    @GET("1206/info.0.json")
-//    Call<Comic> getComic();
-
 }

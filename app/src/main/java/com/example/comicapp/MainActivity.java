@@ -1,21 +1,21 @@
 package com.example.comicapp;
 
-import androidx.annotation.MainThread;
 import androidx.appcompat.app.AppCompatActivity;
 
+import android.database.Cursor;
 import android.os.Bundle;
 import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
 import android.widget.ImageView;
 import android.widget.TextView;
+import android.widget.Toast;
 
 import com.example.comicapp.xkcd.Comic;
 import com.example.comicapp.xkcd.XkcdService;
 import com.squareup.picasso.Picasso;
 
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
+import java.util.concurrent.Executor;
 
 import retrofit2.Call;
 import retrofit2.Callback;
@@ -29,6 +29,11 @@ public class MainActivity extends AppCompatActivity {
     EditText editText;
     Button btn, btn2, btn3;
     XkcdService xkcdService;
+    int id;
+
+    DBHelper myDB;
+
+    private Executor bdExecutor;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -37,59 +42,134 @@ public class MainActivity extends AppCompatActivity {
 
         img = findViewById(R.id.imageView);
         editText = findViewById(R.id.editTextNumber);
-        btn = findViewById(R.id.button);
-        btn2 = findViewById(R.id.button2);
-        btn3 = findViewById(R.id.button3);
+        txt = findViewById(R.id.textView);
+        btn = findViewById(R.id.button); // VER COMIC
+        btn2 = findViewById(R.id.button2); // ANTERIOR
+        btn3 = findViewById(R.id.button3); // SIGUIENTE
+
+        myDB = new DBHelper(this);
+
+        bdExecutor = ((MyApplication) getApplication()).diskIOExecutor;
+
         btn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                int id = Integer.parseInt(editText.getText().toString());
-                devolverComic(id);
+                id = Integer.parseInt(editText.getText().toString());
+
+                if (editText.getText().toString().equals("")) {
+                    Toast.makeText(MainActivity.this, "Para continuar introduce un número", Toast.LENGTH_SHORT).show();
+                } else {
+                    bdExecutor.execute(new Runnable() {
+                        @Override
+                        public void run() {
+                            Boolean comprobarComic = myDB.comprobarComic(id);
+                            if (comprobarComic) {
+                                runOnUiThread(new Runnable() {
+                                    @Override
+                                    public void run() {
+                                        mostrarComic(id);
+                                    }
+                                });
+                            } else {
+                                runOnUiThread(new Runnable() {
+                                    @Override
+                                    public void run() {
+                                        guardarComic(id);
+                                    }
+                                });
+                            }
+                        }
+                    });
+                }
             }
         });
         btn2.setOnClickListener(new View.OnClickListener() {
             @Override
-            public void onClick(View v) {
-                int id = Integer.parseInt(editText.getText().toString());
-                devolverComic(id);
+                public void onClick(View v) {
+                if (editText.getText().toString().equals("")) {
+                    Toast.makeText(MainActivity.this, "Para continuar introduce un número", Toast.LENGTH_SHORT).show();
+                } else {
+                    bdExecutor.execute(new Runnable() {
+                        @Override
+                        public void run() {
+                            id = id - 1;
+                            Boolean comprobarComic = myDB.comprobarComic(id);
+                            if (comprobarComic) {
+                                runOnUiThread(new Runnable() {
+                                    @Override
+                                    public void run() {
+                                        mostrarComic(id);
+                                    }
+                                });
+                            } else {
+                                runOnUiThread(new Runnable() {
+                                    @Override
+                                    public void run() {
+                                        guardarComic(id);
+                                    }
+                                });
+                            }
+                        }
+                    });
+                }
             }
         });
         btn3.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                int id = Integer.parseInt(editText.getText().toString())+1;
-                devolverComic(id);
+                if (editText.getText().toString().equals("")) {
+                    Toast.makeText(MainActivity.this, "Para continuar introduce un número", Toast.LENGTH_SHORT).show();
+                } else {
+                    bdExecutor.execute(new Runnable() {
+                        @Override
+                        public void run() {
+                            id = id + 1;
+                            Boolean comprobarComic = myDB.comprobarComic(id);
+                            if (comprobarComic) {
+                                runOnUiThread(new Runnable() {
+                                    @Override
+                                    public void run() {
+                                        mostrarComic(id);
+                                    }
+                                });
+                            } else {
+                                runOnUiThread(new Runnable() {
+                                    @Override
+                                    public void run() {
+                                        guardarComic(id);
+                                    }
+                                });
+                            }
+                        }
+                    });
+                }
             }
         });
     }
 
-    private void devolverComic(int id) {
-        // Construir retrofit
+    private void guardarComic(int id) {
         Retrofit retrofit = new Retrofit.Builder()
                 .baseUrl("https://xkcd.com/")
                 .addConverterFactory(GsonConverterFactory.create())
                 .build();
 
-        // instanciacion de la interfaz
         xkcdService = retrofit.create(XkcdService.class);
         Call<Comic> request = xkcdService.getComic(id);
 
         request.enqueue(new Callback<Comic>() {
             @Override
             public void onResponse(Call<Comic> call, Response<Comic> response) {
-                // Comprobando la respuesta
                 if (response.code() != 200){
-                    txt.setText("Comprueba la conexión");
+                    Toast.makeText(MainActivity.this, "Compruebe la conexion", Toast.LENGTH_SHORT).show();
                     return;
                 }
+                String url = response.body().getImg();
+                String title = response.body().getTitle();
 
-                // añadir imagen de la url a 'img' https://imgs.xkcd.com/comics/angular_momentum.jpg
-                String url = "";
-                url = response.body().getImg();
+                myDB.insertarBaseDatos(id, url, title);
+                Toast.makeText(MainActivity.this, "Guardado", Toast.LENGTH_SHORT).show();
 
-                // mostrar imagen usando picasso
-                Picasso.get().load(url).into(img);
-
+                mostrarComic(id);
             }
 
             @Override
@@ -98,5 +178,22 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
+    public void mostrarComic(int id){
+        Cursor cursor = myDB.leerBaseDatos(id);
+        if(cursor.getCount() == 0){
+            Toast.makeText(MainActivity.this, "No se puede conectar", Toast.LENGTH_SHORT).show();
+            return;
+        }
+        StringBuffer buffer = new StringBuffer();
 
+        while (cursor.moveToNext()){
+            int num = cursor.getInt(0);
+            String url = cursor.getString(1);
+            String title = cursor.getString(2);
+
+//            Toast.makeText(MainActivity.this, title, Toast.LENGTH_SHORT).show();
+            Picasso.get().load(url).into(img);
+            txt.setText(num + ": " + title);
+        }
+    }
 }

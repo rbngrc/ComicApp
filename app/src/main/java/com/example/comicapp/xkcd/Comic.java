@@ -39,6 +39,9 @@ public class Comic {
     @Expose
     private String day;
 
+    public Comic(String img, String title) {
+    }
+
     public String getMonth() {
         return month;
     }
